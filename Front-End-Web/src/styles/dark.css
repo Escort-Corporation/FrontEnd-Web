@@ -1,0 +1,51 @@
+/*
+ * Tema escuro — camada de transicao.
+ *
+ * As telas foram escritas com cor literal (bg-white, text-gray-900...): sao 875
+ * usos espalhados por 30 paginas, e nenhuma usa os tokens semanticos de
+ * theme.css. Reescrever tudo seria um trabalho grande e arriscado, entao aqui
+ * as classes claras mais usadas sao traduzidas para o equivalente escuro.
+ *
+ * E uma ponte, nao o destino: a medida que cada tela adotar os tokens
+ * (bg-background, text-foreground), a regra correspondente sai daqui.
+ *
+ * Estas regras ficam fora de @layer de proposito, para vencer as utilidades do
+ * Tailwind sem depender de contagem de especificidade.
+ */
+
+.dark body {
+  background-color: #0f1521;
+  color: #f1f5f9;
+}
+
+/* Superficies: o fundo da pagina fica mais escuro que os cartoes, para manter a hierarquia. */
+.dark .bg-gray-50 { background-color: #0f1521; }
+.dark .bg-white { background-color: #1a2234; }
+.dark .bg-gray-100 { background-color: #243044; }
+.dark .bg-gray-200 { background-color: #2d3a52; }
+
+/* Texto, preservando os quatro niveis de enfase do original. */
+.dark .text-gray-900 { color: #f1f5f9; }
+.dark .text-gray-700 { color: #d4dbe6; }
+.dark .text-gray-600 { color: #aeb9c9; }
+.dark .text-gray-500 { color: #8f9bad; }
+
+/* Bordas e divisores. */
+.dark .border-gray-100 { border-color: #243044; }
+.dark .border-gray-200 { border-color: #2a3650; }
+.dark .border-gray-300 { border-color: #36425e; }
+.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color: #243044; }
+
+/*
+ * O Tailwind gera o hover como `.hover\:bg-gray-50:hover`, um seletor diferente
+ * do da classe base. Sem estas regras, passar o mouse acenderia um retangulo
+ * branco no meio do tema escuro.
+ */
+.dark .hover\:bg-gray-50:hover { background-color: #202b40; }
+.dark .hover\:bg-gray-100:hover { background-color: #243044; }
+.dark .hover\:bg-gray-200:hover { background-color: #2d3a52; }
+.dark .hover\:bg-white:hover { background-color: #1a2234; }
+
+/* Trilhas de barra de progresso, que no claro sao cinza bem claro. */
+.dark .bg-gray-800 { background-color: #050810; }
+.dark .bg-gray-900 { background-color: #020509; }
