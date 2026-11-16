@@ -47,7 +47,9 @@ export const router = createBrowserRouter([
       { path: "sobre", lazy: page(() => import("./pages/About"), "About") },
       { path: "servicos", lazy: page(() => import("./pages/Services"), "Services") },
       { path: "servicos/:slug", lazy: page(() => import("./pages/ServiceDetail"), "ServiceDetail") },
-      { path: "rastreamento", lazy: page(() => import("./pages/Tracking"), "Tracking") },
+      // Consultar carga e funcionalidade de cliente, nao vitrine: exige sessao.
+      { path: "rastreamento", lazy: protectedPage(() => import("./pages/Tracking"), "Tracking") },
+      { path: "perfil", lazy: protectedPage(() => import("./pages/Profile"), "Profile") },
       { path: "cobertura", lazy: page(() => import("./pages/Coverage"), "Coverage") },
       { path: "tecnologia", lazy: page(() => import("./pages/Technology"), "Technology") },
       { path: "clientes", lazy: page(() => import("./pages/Clients"), "Clients") },
