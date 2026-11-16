@@ -24,9 +24,9 @@ export function Register() {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const success = register(name, email, password, role);
+    const account = register(name, email, password, role);
 
-    if (!success) {
+    if (!account) {
       setError("Preencha nome, e-mail e uma senha com pelo menos 6 caracteres. Verifique se o e-mail ja esta cadastrado.");
       return;
     }
