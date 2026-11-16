@@ -11,23 +11,61 @@ export type AuthUser = {
 
 type StoredAccount = AuthUser & { password: string };
 
+/** Falha de operacao da conta, com texto pronto para a tela. */
+export type AccountError = { message: string };
+
 type AuthContextValue = {
   user: AuthUser | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => boolean;
-  register: (name: string, email: string, password: string, role: Extract<Role, "empresa" | "motorista">) => boolean;
+  /** Devolve a conta autenticada, para quem precisa do perfil logo apos o login. */
+  login: (email: string, password: string) => AuthUser | null;
+  register: (
+    name: string,
+    email: string,
+    password: string,
+    role: Extract<Role, "empresa" | "motorista">,
+  ) => AuthUser | null;
   logout: () => void;
+  /** Null em caso de sucesso; com erro, a mensagem a exibir. */
+  updateName: (name: string) => AccountError | null;
+  changePassword: (current: string, next: string) => AccountError | null;
+  deleteAccount: () => void;
 };
 
 const sessionKey = "escort-auth-user";
 const accountsKey = "escort-auth-accounts";
+/** Marca que as contas de demonstracao ja foram gravadas; sem isto, uma conta apagada voltaria. */
+const seededKey = "escort-auth-seeded";
 
-const seedAdmin: StoredAccount = {
-  name: "Administrador",
-  email: "admin@escortinroad.com.br",
-  password: "admin123",
-  role: "admin",
-};
+export const MIN_PASSWORD_LENGTH = 6;
+
+/**
+ * Contas de demonstracao.
+ *
+ * Elas sao gravadas no storage no primeiro carregamento, e nao consultadas como
+ * constante: assim editar nome, trocar senha e encerrar conta funcionam nelas
+ * como em qualquer outra. A tela de login anuncia estas tres.
+ */
+const seedAccounts: StoredAccount[] = [
+  {
+    name: "Administrador",
+    email: "admin@escortinroad.com.br",
+    password: "admin123",
+    role: "admin",
+  },
+  {
+    name: "Transportadora Exemplo",
+    email: "empresa@escortinroad.com.br",
+    password: "empresa123",
+    role: "empresa",
+  },
+  {
+    name: "Motorista Exemplo",
+    email: "motorista@escortinroad.com.br",
+    password: "motorista123",
+    role: "motorista",
+  },
+];
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
@@ -35,50 +73,125 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+function readAccounts() {
+  return loadFromStorage<StoredAccount[]>(accountsKey, []);
+}
+
+/**
+ * Grava as contas de demonstracao uma unica vez, preservando o que ja existir.
+ * O flag evita que uma conta de demonstracao encerrada reapareca no refresh.
+ */
+function ensureSeeded() {
+  if (loadFromStorage<boolean>(seededKey, false)) return readAccounts();
+
+  const existing = readAccounts();
+  const missing = seedAccounts.filter(
+    (seed) => !existing.some((account) => normalizeEmail(account.email) === seed.email),
+  );
+  const merged = [...existing, ...missing];
+
+  saveToStorage(accountsKey, merged);
+  saveToStorage(seededKey, true);
+  return merged;
+}
+
 function findAccount(email: string) {
   const normalized = normalizeEmail(email);
-  if (normalized === seedAdmin.email) return seedAdmin;
+  return ensureSeeded().find((account) => normalizeEmail(account.email) === normalized) ?? null;
+}
 
-  const accounts = loadFromStorage<StoredAccount[]>(accountsKey, []);
-  return accounts.find((account) => normalizeEmail(account.email) === normalized);
+function writeAccount(account: StoredAccount) {
+  const accounts = ensureSeeded().map((current) =>
+    normalizeEmail(current.email) === normalizeEmail(account.email) ? account : current,
+  );
+  saveToStorage(accountsKey, accounts);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() => loadFromStorage<AuthUser | null>(sessionKey, null));
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    ensureSeeded();
+    return loadFromStorage<AuthUser | null>(sessionKey, null);
+  });
 
-  const value = useMemo<AuthContextValue>(
-    () => ({
+  const value = useMemo<AuthContextValue>(() => {
+    /** Guarda a sessao e devolve a conta, sem a senha. */
+    function startSession(account: StoredAccount) {
+      const nextUser: AuthUser = { name: account.name, email: account.email, role: account.role };
+      saveToStorage(sessionKey, nextUser);
+      setUser(nextUser);
+      return nextUser;
+    }
+
+    return {
       user,
       isAuthenticated: Boolean(user),
-      login: (email: string, password: string) => {
+
+      login: (email, password) => {
         const account = findAccount(email);
-        if (!account || account.password !== password) return false;
-
-        const nextUser: AuthUser = { name: account.name, email: account.email, role: account.role };
-        saveToStorage(sessionKey, nextUser);
-        setUser(nextUser);
-        return true;
+        if (!account || account.password !== password) return null;
+        return startSession(account);
       },
-      register: (name: string, email: string, password: string, role: Extract<Role, "empresa" | "motorista">) => {
-        if (!name.trim() || !email.trim() || password.trim().length < 6) return false;
-        if (findAccount(email)) return false;
 
-        const accounts = loadFromStorage<StoredAccount[]>(accountsKey, []);
-        const nextAccount: StoredAccount = { name: name.trim(), email: email.trim(), password, role };
-        saveToStorage(accountsKey, [...accounts, nextAccount]);
+      register: (name, email, password, role) => {
+        if (!name.trim() || !email.trim() || password.trim().length < MIN_PASSWORD_LENGTH) return null;
+        if (findAccount(email)) return null;
 
-        const nextUser: AuthUser = { name: nextAccount.name, email: nextAccount.email, role: nextAccount.role };
-        saveToStorage(sessionKey, nextUser);
-        setUser(nextUser);
-        return true;
+        const nextAccount: StoredAccount = {
+          name: name.trim(),
+          email: normalizeEmail(email),
+          password,
+          role,
+        };
+        saveToStorage(accountsKey, [...ensureSeeded(), nextAccount]);
+        return startSession(nextAccount);
       },
+
       logout: () => {
         localStorage.removeItem(sessionKey);
         setUser(null);
       },
-    }),
-    [user],
-  );
+
+      updateName: (name) => {
+        if (!user) return { message: "Sessão expirada. Entre novamente." };
+
+        const trimmed = name.trim();
+        if (trimmed.length < 3) return { message: "O nome precisa ter pelo menos 3 caracteres." };
+
+        const account = findAccount(user.email);
+        if (!account) return { message: "Conta não encontrada." };
+
+        writeAccount({ ...account, name: trimmed });
+        startSession({ ...account, name: trimmed });
+        return null;
+      },
+
+      changePassword: (current, next) => {
+        if (!user) return { message: "Sessão expirada. Entre novamente." };
+
+        const account = findAccount(user.email);
+        if (!account) return { message: "Conta não encontrada." };
+        if (account.password !== current) return { message: "A senha atual está incorreta." };
+        if (next.trim().length < MIN_PASSWORD_LENGTH) {
+          return { message: `A nova senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres.` };
+        }
+        if (next === current) return { message: "A nova senha deve ser diferente da atual." };
+
+        writeAccount({ ...account, password: next });
+        return null;
+      },
+
+      deleteAccount: () => {
+        if (!user) return;
+
+        const remaining = ensureSeeded().filter(
+          (account) => normalizeEmail(account.email) !== normalizeEmail(user.email),
+        );
+        saveToStorage(accountsKey, remaining);
+        localStorage.removeItem(sessionKey);
+        setUser(null);
+      },
+    };
+  }, [user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
