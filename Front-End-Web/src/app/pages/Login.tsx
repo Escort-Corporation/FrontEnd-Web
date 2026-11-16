@@ -31,17 +31,17 @@ export function Login() {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const success = login(email, password);
+    const account = login(email, password);
 
-    if (!success) {
-      setError("E-mail ou senha invalidos. Use uma das contas de demonstracao ou crie um cadastro.");
+    if (!account) {
+      setError("E-mail ou senha inválidos. Use uma das contas de demonstração ou crie um cadastro.");
       return;
     }
 
     setError("");
-    navigate(from ?? homeByRole[demoAccounts.find((account) => account.email === email)?.role ?? "empresa"], {
-      replace: true,
-    });
+    // O destino vem do perfil da conta que entrou, nao do e-mail digitado:
+    // senao quem se cadastra cai numa area sem permissao e e devolvido a home.
+    navigate(from ?? homeByRole[account.role], { replace: true });
   };
 
   return (
