@@ -1,0 +1,12 @@
+{
+  "name": "escortinroad",
+  "private": true,
+  "description": "Atalhos para o app em Front-End-Web/, que e onde fica o projeto de verdade. Sem isto, rodar npm run dev nesta pasta falha com ENOENT, porque os nomes das duas pastas diferem por um hifen (FrontEnd-Web / Front-End-Web).",
+  "scripts": {
+    "dev": "npm run dev --prefix Front-End-Web",
+    "build": "npm run build --prefix Front-End-Web",
+    "preview": "npm run preview --prefix Front-End-Web",
+    "typecheck": "npm run typecheck --prefix Front-End-Web",
+    "setup": "npm install --prefix Front-End-Web"
+  }
+}
