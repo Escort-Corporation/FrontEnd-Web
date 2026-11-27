@@ -7,12 +7,6 @@ type LocationState = {
   from?: string;
 };
 
-const demoAccounts: { role: Role; label: string; email: string; password: string }[] = [
-  { role: "admin", label: "Administrador", email: "admin@escortinroad.com.br", password: "admin123" },
-  { role: "empresa", label: "Empresa", email: "empresa@escortinroad.com.br", password: "empresa123" },
-  { role: "motorista", label: "Motorista", email: "motorista@escortinroad.com.br", password: "motorista123" },
-];
-
 const homeByRole: Record<Role, string> = {
   admin: "/admin-usuarios",
   empresa: "/cadastro-cargas",
@@ -23,18 +17,21 @@ export function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
-  const [email, setEmail] = useState("admin@escortinroad.com.br");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const from = (location.state as LocationState | null)?.from;
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const account = login(email, password);
+    setSubmitting(true);
+    const account = await login(email, password);
+    setSubmitting(false);
 
     if (!account) {
-      setError("E-mail ou senha inválidos. Use uma das contas de demonstração ou crie um cadastro.");
+      setError("E-mail ou senha inválidos.");
       return;
     }
 
@@ -59,27 +56,6 @@ export function Login() {
             As areas de cargas, lotes, mapa, documentos e usuarios ficam disponiveis somente apos autenticacao. O acesso a
             Central de Documentacao e a Gestao de Usuarios e restrito ao perfil Administrador.
           </p>
-
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h2 className="font-bold text-gray-900 mb-4">Contas de demonstracao</h2>
-            <div className="grid sm:grid-cols-3 gap-3">
-              {demoAccounts.map((account) => (
-                <button
-                  key={account.role}
-                  type="button"
-                  onClick={() => {
-                    setEmail(account.email);
-                    setPassword(account.password);
-                    setError("");
-                  }}
-                  className="text-left border-2 border-gray-200 rounded-lg p-4 hover:border-orange-400 hover:bg-orange-50 transition-colors"
-                >
-                  <div className="font-bold text-gray-900">{account.label}</div>
-                  <div className="text-xs text-gray-500 break-words">{account.email}</div>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl p-8">
@@ -114,9 +90,12 @@ export function Login() {
 
             {error && <p className="text-red-600 font-semibold text-sm">{error}</p>}
 
-            <button className="w-full bg-orange-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-orange-700 transition-colors flex items-center justify-center gap-2">
+            <button
+              disabled={submitting}
+              className="w-full bg-orange-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-orange-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+            >
               <LogIn className="w-5 h-5" />
-              Entrar
+              {submitting ? "Entrando..." : "Entrar"}
             </button>
           </form>
           <p className="text-sm text-gray-600 mt-6 text-center">

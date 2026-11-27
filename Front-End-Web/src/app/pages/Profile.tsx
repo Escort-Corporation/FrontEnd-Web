@@ -61,19 +61,20 @@ export function Profile() {
   const [passwordSaved, setPasswordSaved] = useState(false);
 
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   // A rota e protegida, entao so cai aqui durante o redirecionamento da saida.
   if (!user) return null;
 
-  function handleNameSubmit(event: FormEvent) {
+  async function handleNameSubmit(event: FormEvent) {
     event.preventDefault();
-    const error = updateName(name);
+    const error = await updateName(name);
 
     setNameError(error?.message ?? "");
     setNameSaved(!error);
   }
 
-  function handlePasswordSubmit(event: FormEvent) {
+  async function handlePasswordSubmit(event: FormEvent) {
     event.preventDefault();
     setPasswordSaved(false);
 
@@ -82,7 +83,7 @@ export function Profile() {
       return;
     }
 
-    const error = changePassword(currentPassword, newPassword);
+    const error = await changePassword(currentPassword, newPassword);
     if (error) {
       setPasswordError(error.message);
       return;
@@ -95,8 +96,12 @@ export function Profile() {
     setConfirmPassword("");
   }
 
-  function handleDelete() {
-    deleteAccount();
+  async function handleDelete() {
+    const error = await deleteAccount();
+    if (error) {
+      setDeleteError(error.message);
+      return;
+    }
     navigate("/", { replace: true });
   }
 
@@ -359,7 +364,7 @@ export function Profile() {
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Encerrar conta</h2>
                 <p className="text-gray-600">
-                  Remove seus dados de acesso deste navegador. Não é possível desfazer.
+                  Exclui sua conta na plataforma. Não é possível desfazer.
                 </p>
               </div>
             </div>
@@ -367,9 +372,10 @@ export function Profile() {
             {confirmingDelete ? (
               <div className="border-2 border-red-200 rounded-lg p-4">
                 <p className="text-gray-700 mb-4">
-                  Encerrar a conta <strong>{user.email}</strong>? Você será desconectado e os dados
-                  de acesso serão apagados.
+                  Encerrar a conta <strong>{user.email}</strong>? Você será desconectado e a conta
+                  será excluída da plataforma.
                 </p>
+                {deleteError && <p className="text-red-600 font-semibold text-sm mb-4">{deleteError}</p>}
                 <div className="flex flex-wrap gap-3">
                   <button
                     type="button"
