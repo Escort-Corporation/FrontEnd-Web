@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { Building2, Lock, Mail, Truck, UserPlus } from "lucide-react";
 import { useAuth, type Role } from "../auth/AuthContext";
 
@@ -8,13 +8,7 @@ const accountTypes: { role: Extract<Role, "empresa" | "motorista">; label: strin
   { role: "motorista", label: "Motorista", description: "Consulta o mapa operacional.", icon: Truck },
 ];
 
-const homeByRole: Record<Extract<Role, "empresa" | "motorista">, string> = {
-  empresa: "/cadastro-cargas",
-  motorista: "/mapa-operacional",
-};
-
 export function Register() {
-  const navigate = useNavigate();
   const { register } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -22,17 +16,12 @@ export function Register() {
   const [role, setRole] = useState<Extract<Role, "empresa" | "motorista">>("empresa");
   const [error, setError] = useState("");
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  // O cadastro exige CPF/CNPJ, CNH ou RNTRC, que este formulario nao coleta: o contexto
+  // devolve a orientacao para criar a conta pelo aplicativo. Nada e criado no navegador.
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const account = register(name, email, password, role);
-
-    if (!account) {
-      setError("Preencha nome, e-mail e uma senha com pelo menos 6 caracteres. Verifique se o e-mail ja esta cadastrado.");
-      return;
-    }
-
-    setError("");
-    navigate(homeByRole[role], { replace: true });
+    const result = await register(name, email, password, role);
+    setError(result.message);
   };
 
   return (
