@@ -1,16 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { Lock, LogIn, Mail, ShieldCheck } from "lucide-react";
-import { useAuth, type Role } from "../auth/AuthContext";
+import { useAuth } from "../auth/AuthContext";
+import { homeForUser } from "../auth/navigation";
 
 type LocationState = {
   from?: string;
-};
-
-const homeByRole: Record<Role, string> = {
-  admin: "/admin-usuarios",
-  empresa: "/cadastro-cargas",
-  motorista: "/mapa-operacional",
 };
 
 export function Login() {
@@ -38,7 +33,7 @@ export function Login() {
     setError("");
     // O destino vem do perfil da conta que entrou, nao do e-mail digitado:
     // senao quem se cadastra cai numa area sem permissao e e devolvido a home.
-    navigate(from ?? homeByRole[account.role], { replace: true });
+    navigate(from ?? homeForUser(account), { replace: true });
   };
 
   return (

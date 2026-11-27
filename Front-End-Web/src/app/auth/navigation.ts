@@ -1,4 +1,4 @@
-import type { Role } from "./AuthContext";
+import type { AccountKind, AuthUser, Role } from "./AuthContext";
 
 /**
  * Para onde cada perfil vai ao entrar, e o que o logo aponta enquanto houver
@@ -11,12 +11,29 @@ export const homeByRole: Record<Role, string> = {
   motorista: "/mapa-operacional",
 };
 
+/** "empresa" tem duas areas de trabalho: a ESF publica fretes, a ECF opera a frota. */
+const homeByKind: Partial<Record<AccountKind, string>> = {
+  shipper: "/meus-fretes",
+  carrier: "/ofertas",
+};
+
+export function homeForUser(user: Pick<AuthUser, "role" | "kind">): string {
+  return homeByKind[user.kind] ?? homeByRole[user.role];
+}
+
 /**
  * Paineis internos e quem pode abrir cada um.
- * Precisa espelhar os `roles` das rotas em routes.tsx: um item visivel para
+ * Precisa espelhar os `roles`/`kinds` das rotas em routes.tsx: um item visivel para
  * quem nao tem permissao leva a pessoa a clicar e ser devolvida para a home.
+ * `kinds`, quando presente, restringe alem do perfil (ESF x ECF).
  */
-export const panelItems: { path: string; label: string; roles: Role[] }[] = [
+export const panelItems: { path: string; label: string; roles: Role[]; kinds?: AccountKind[] }[] = [
+  // Fluxo do MVP, ligado ao backend.
+  { path: "/publicar-frete", label: "Publicar frete", roles: ["empresa"], kinds: ["shipper"] },
+  { path: "/meus-fretes", label: "Meus fretes", roles: ["empresa"], kinds: ["shipper"] },
+  { path: "/ofertas", label: "Ofertas e viagens", roles: ["empresa"], kinds: ["carrier"] },
+  { path: "/minha-frota", label: "Minha frota", roles: ["empresa"], kinds: ["carrier"] },
+  // Paineis de demonstracao (dados locais).
   { path: "/cadastro-cargas", label: "Cadastro de cargas", roles: ["admin", "empresa"] },
   { path: "/gestao-lotes", label: "Gestão de lotes", roles: ["admin", "empresa"] },
   { path: "/mapa-operacional", label: "Mapa operacional", roles: ["admin", "empresa", "motorista"] },
@@ -33,5 +50,11 @@ export const panelItems: { path: string; label: string; roles: Role[] }[] = [
 export const INLINE_PANEL_LIMIT = 4;
 
 export function panelsForRole(role: Role) {
-  return panelItems.filter((item) => item.roles.includes(role));
+  return panelItems.filter((item) => item.roles.includes(role) && !item.kinds);
+}
+
+export function panelsForUser(user: Pick<AuthUser, "role" | "kind">) {
+  return panelItems.filter(
+    (item) => item.roles.includes(user.role) && (!item.kinds || item.kinds.includes(user.kind)),
+  );
 }

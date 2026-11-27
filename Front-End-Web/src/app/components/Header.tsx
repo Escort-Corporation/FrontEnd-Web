@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { Truck, Menu, X, Phone, ChevronDown, LogOut, UserCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { INLINE_PANEL_LIMIT, homeByRole, panelsForRole } from "../auth/navigation";
+import { INLINE_PANEL_LIMIT, homeForUser, panelsForUser } from "../auth/navigation";
 
 /** Navegacao de quem ainda nao entrou: o site institucional. */
 const publicNavItems = [
@@ -38,10 +38,10 @@ export function Header() {
    * rastreamento (que agora exige sessao) e o menu da conta. As paginas
    * institucionais continuam acessiveis pelo logo e pelo rodape.
    */
-  const panels = user ? panelsForRole(user.role) : [];
+  const panels = user ? panelsForUser(user) : [];
   const inlinePanels = panels.slice(0, INLINE_PANEL_LIMIT);
   const morePanels = panels.slice(INLINE_PANEL_LIMIT);
-  const homePath = user ? homeByRole[user.role] : "/";
+  const homePath = user ? homeForUser(user) : "/";
 
   useEffect(() => {
     setMorePanelsOpen(false);

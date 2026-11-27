@@ -3,7 +3,7 @@ import { createBrowserRouter } from "react-router";
 import { Root } from "./pages/Root";
 import { LoadingScreen } from "./components/LoadingScreen";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
-import { type Role } from "./auth/AuthContext";
+import { type AccountKind, type Role } from "./auth/AuthContext";
 
 /**
  * Cada pagina vira um chunk proprio, carregado pelo `lazy` do React Router.
@@ -22,13 +22,14 @@ function protectedPage<K extends string>(
   load: () => Promise<Record<K, ComponentType>>,
   name: K,
   roles?: Role[],
+  kinds?: AccountKind[],
 ) {
   return async () => {
     const Page: ComponentType = (await load())[name];
 
     return {
       Component: () => (
-        <ProtectedRoute roles={roles}>
+        <ProtectedRoute roles={roles} kinds={kinds}>
           <Page />
         </ProtectedRoute>
       ),
@@ -64,6 +65,24 @@ export const router = createBrowserRouter([
       { path: "termos-de-uso", lazy: page(() => import("./pages/Legal"), "TermsOfUse") },
 
       { path: "cotacao", lazy: protectedPage(() => import("./pages/Quote"), "Quote") },
+
+      // Fluxo do MVP ligado ao backend: ESF (embarcador) e ECF (transportadora).
+      {
+        path: "publicar-frete",
+        lazy: protectedPage(() => import("./pages/mvp/PublishFreight"), "PublishFreight", ["empresa"], ["shipper"]),
+      },
+      {
+        path: "meus-fretes",
+        lazy: protectedPage(() => import("./pages/mvp/MyFreights"), "MyFreights", ["empresa"], ["shipper"]),
+      },
+      {
+        path: "ofertas",
+        lazy: protectedPage(() => import("./pages/mvp/CarrierOffers"), "CarrierOffers", ["empresa"], ["carrier"]),
+      },
+      {
+        path: "minha-frota",
+        lazy: protectedPage(() => import("./pages/mvp/CarrierFleet"), "CarrierFleet", ["empresa"], ["carrier"]),
+      },
       {
         path: "cadastro-cargas",
         lazy: protectedPage(() => import("./pages/CargoRegistration"), "CargoRegistration", ["admin", "empresa"]),

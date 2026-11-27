@@ -1,31 +1,60 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { GATEWAY_URL, getAccessToken } from "../lib/platformApi";
 
 export type Role = "admin" | "empresa" | "motorista";
+
+/**
+ * Tipo real da conta no api-auth. "empresa" cobre dois perfis com telas diferentes:
+ * a ESF (embarcador, `shipper`) publica fretes; a ECF (transportadora, `carrier`) tem a frota.
+ */
+export type AccountKind = "admin" | "shipper" | "carrier" | "trucker";
 
 export type AuthUser = {
   name: string;
   email: string;
   role: Role;
+  kind: AccountKind;
 };
 
 /** Falha de operacao da conta, com texto pronto para a tela. */
 export type AccountError = { message: string };
+
+/** Dados do cadastro. Empresa (ESF/ECF) informa CNPJ; motorista informa CPF e CNH. */
+export type SignUpInput =
+  | {
+      kind: "shipper" | "carrier";
+      name: string;
+      email: string;
+      password: string;
+      phone?: string;
+      companyName: string;
+      documentNumber: string;
+      rntrcNumber?: string;
+      city?: string;
+      state?: string;
+    }
+  | {
+      kind: "trucker";
+      name: string;
+      email: string;
+      password: string;
+      phone?: string;
+      documentNumber: string;
+      licenseNumber: string;
+      licenseCategory: string;
+      city?: string;
+      state?: string;
+    };
+
+/** Resultado do cadastro: entra direto, ou precisa confirmar o e-mail antes. */
+export type SignUpResult = { user: AuthUser | null; message: string | null; error: string | null };
 
 type AuthContextValue = {
   user: AuthUser | null;
   isAuthenticated: boolean;
   /** Devolve a conta autenticada, para quem precisa do perfil logo apos o login. */
   login: (email: string, password: string) => Promise<AuthUser | null>;
-  /**
-   * O cadastro exige CPF/CNPJ, CNH ou RNTRC, que o formulario do site nao coleta.
-   * Ate o formulario pedir esses dados, a conta e criada pelo aplicativo.
-   */
-  register: (
-    name: string,
-    email: string,
-    password: string,
-    role: Extract<Role, "empresa" | "motorista">,
-  ) => Promise<AccountError>;
+  register: (input: SignUpInput) => Promise<SignUpResult>;
   logout: () => void;
   /** Null em caso de sucesso; com erro, a mensagem a exibir. */
   updateName: (name: string) => Promise<AccountError | null>;
@@ -38,44 +67,43 @@ export const MIN_PASSWORD_LENGTH = 8;
 
 /**
  * Autenticacao real pelo api-auth (Supabase Auth), atraves do gateway. Nenhuma senha fica
- * no navegador: ela vai so no corpo do POST de login. O token fica em sessionStorage, para
- * durar a aba e nao o navegador inteiro.
- *
- * VITE_API_URL continua apontando para o backend Java legado (relatorios e roteirizacao);
- * por isso o login tem a propria variavel.
+ * no navegador: ela vai so no corpo do POST. O token fica em sessionStorage, para durar a
+ * aba e nao o navegador inteiro.
  */
-const API_URL: string = (import.meta.env.VITE_AUTH_API_URL as string | undefined) ?? "http://localhost:8000";
-
 const userKey = "escort-auth-user";
 const tokenKey = "escort-auth-token";
 
 type ProfileResponse = { full_name: string; email: string; user_type: string };
-type UserLoginResponse = { profile: ProfileResponse; session: { access_token: string } };
+type Session = { access_token: string };
+type UserLoginResponse = { profile: ProfileResponse; session: Session };
+type SignUpResponse = { profile: ProfileResponse; session: Session | null; message: string | null };
 type AdminLoginResponse = {
   admin: { full_name: string; email: string };
-  session: { access_token: string };
+  session: Session;
 };
 
-const roleByUserType: Record<string, Exclude<Role, "admin">> = {
+const roleByKind: Record<Exclude<AccountKind, "admin">, Exclude<Role, "admin">> = {
   trucker: "motorista",
   shipper: "empresa",
   carrier: "empresa",
 };
+
+function toUser(profile: ProfileResponse): AuthUser | null {
+  const kind = profile.user_type.toLowerCase() as Exclude<AccountKind, "admin">;
+  const role = roleByKind[kind];
+  if (!role) return null;
+  return { name: profile.full_name, email: profile.email, role, kind };
+}
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 function readStoredUser(): AuthUser | null {
   try {
     const raw = sessionStorage.getItem(userKey);
-    return raw ? (JSON.parse(raw) as AuthUser) : null;
-  } catch {
-    return null;
-  }
-}
-
-function readToken(): string | null {
-  try {
-    return sessionStorage.getItem(tokenKey);
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as Partial<AuthUser>;
+    // Sessao gravada por uma versao anterior, sem o tipo da conta: pede login de novo.
+    return stored.kind ? (stored as AuthUser) : null;
   } catch {
     return null;
   }
@@ -99,22 +127,29 @@ function clearSession() {
   }
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<T | null> {
-  const response = await fetch(`${API_URL}${path}`, {
+async function postJson<T>(path: string, body: unknown): Promise<{ ok: true; data: T } | { ok: false; message: string }> {
+  const response = await fetch(`${GATEWAY_URL}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) return null;
-  return (await response.json()) as T;
+  if (response.ok) return { ok: true, data: (await response.json()) as T };
+  let message = "";
+  try {
+    const data = (await response.json()) as { error?: { message?: string } };
+    message = data.error?.message ?? "";
+  } catch {
+    // corpo nao-JSON
+  }
+  return { ok: false, message };
 }
 
 /** Chamada autenticada. Devolve null em caso de sucesso, ou a mensagem a exibir. */
 async function authedRequest(method: string, path: string, body?: unknown): Promise<AccountError | null> {
-  const token = readToken();
+  const token = getAccessToken();
   if (!token) return { message: "Sessão expirada. Entre novamente." };
   try {
-    const response = await fetch(`${API_URL}${path}`, {
+    const response = await fetch(`${GATEWAY_URL}${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -128,6 +163,39 @@ async function authedRequest(method: string, path: string, body?: unknown): Prom
   } catch {
     return { message: "Sem conexão com o servidor. Tente novamente." };
   }
+}
+
+function onlyDigits(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+/** Corpo do POST /auth/signup no formato do api-auth. */
+function toSignUpBody(input: SignUpInput) {
+  const base = {
+    email: input.email.trim().toLowerCase(),
+    password: input.password,
+    full_name: input.name.trim(),
+    phone: input.phone?.trim() || null,
+    city: input.city?.trim() || null,
+    state: input.state?.trim().toUpperCase() || null,
+  };
+  if (input.kind === "trucker") {
+    return {
+      ...base,
+      user_type: "trucker",
+      document_number: onlyDigits(input.documentNumber),
+      license_number: onlyDigits(input.licenseNumber),
+      license_category: input.licenseCategory.trim().toUpperCase(),
+    };
+  }
+  return {
+    ...base,
+    user_type: input.kind,
+    entity_type: "company",
+    company_name: input.companyName.trim(),
+    document_number: onlyDigits(input.documentNumber),
+    ...(input.kind === "carrier" && input.rntrcNumber ? { rntrc_number: onlyDigits(input.rntrcNumber) } : {}),
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -153,22 +221,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const credentials = { email: email.trim(), password };
         try {
           const userLogin = await postJson<UserLoginResponse>("/auth/login", credentials);
-          if (userLogin) {
-            const role = roleByUserType[userLogin.profile.user_type.toLowerCase()];
-            if (!role) return null;
-            return startSession(
-              { name: userLogin.profile.full_name, email: userLogin.profile.email, role },
-              userLogin.session.access_token,
-            );
+          if (userLogin.ok) {
+            const nextUser = toUser(userLogin.data.profile);
+            return nextUser ? startSession(nextUser, userLogin.data.session.access_token) : null;
           }
 
           // Administradores tem login separado. O gateway de producao nao expoe /admin/*,
           // entao isto so funciona falando direto com o api-auth.
           const adminLogin = await postJson<AdminLoginResponse>("/admin/login", credentials);
-          if (adminLogin) {
+          if (adminLogin.ok) {
             return startSession(
-              { name: adminLogin.admin.full_name, email: adminLogin.admin.email, role: "admin" },
-              adminLogin.session.access_token,
+              {
+                name: adminLogin.data.admin.full_name,
+                email: adminLogin.data.admin.email,
+                role: "admin",
+                kind: "admin",
+              },
+              adminLogin.data.session.access_token,
             );
           }
           return null;
@@ -177,17 +246,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       },
 
-      register: async () => ({
-        message:
-          "O cadastro pelo site ainda não está disponível. Crie sua conta pelo aplicativo ou fale com o administrador.",
-      }),
+      register: async (input) => {
+        try {
+          const result = await postJson<SignUpResponse>("/auth/signup", toSignUpBody(input));
+          if (!result.ok) {
+            return { user: null, message: null, error: result.message || "Não foi possível criar a conta." };
+          }
+          const nextUser = toUser(result.data.profile);
+          if (nextUser && result.data.session) {
+            return { user: startSession(nextUser, result.data.session.access_token), message: null, error: null };
+          }
+          // Projeto com confirmacao de e-mail: a conta existe, mas so entra depois de confirmar.
+          return {
+            user: null,
+            message: result.data.message ?? "Conta criada. Confirme seu e-mail para entrar.",
+            error: null,
+          };
+        } catch {
+          return { user: null, message: null, error: "Sem conexão com o servidor. Tente novamente." };
+        }
+      },
 
       logout: () => {
-        const token = readToken();
+        const token = getAccessToken();
         endSession();
         if (token) {
           // Melhor esforco: a sessao local ja foi encerrada, o servidor so revoga o token.
-          void fetch(`${API_URL}/auth/logout`, {
+          void fetch(`${GATEWAY_URL}/auth/logout`, {
             method: "POST",
             headers: { Authorization: `Bearer ${token}` },
           }).catch(() => undefined);
